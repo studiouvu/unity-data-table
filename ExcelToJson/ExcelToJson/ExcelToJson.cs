@@ -71,8 +71,6 @@ namespace DTable
 
                     var dictionary = new Dictionary<int, List<string>>();
 
-                    // Console.WriteLine($"-----------------");
-
                     for (int row = 1; row <= range.Rows.Count; row++)
                     {
                         dictionary.Add(row, new List<string>());
@@ -83,7 +81,7 @@ namespace DTable
 
                             string str = obj == null ? "" : obj.ToString(); // 셀 데이터 가져옴
 
-                            dictionary[row - 1].Add(str);
+                            dictionary[row].Add(str);
                         }
                     }
 
