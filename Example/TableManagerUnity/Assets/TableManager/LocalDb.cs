@@ -100,6 +100,7 @@ namespace TableManager
                 }
                 catch (Exception e)
                 {
+                    Debug.LogError($"e");
                     throw new ArgumentOutOfRangeException(
                         $"string => {field.PropertyType} {rvalue} 에 대한 바인딩 정의가 없습니다.");
                 }
