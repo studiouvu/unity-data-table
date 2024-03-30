@@ -75,11 +75,17 @@ namespace DTable
                     {
                         dictionary.Add(row, new List<string>());
 
+                        if (row > 2 && (range.Cells[row, 2] == null || string.IsNullOrEmpty((range.Cells[row, 2] as Excel.Range)?.Value2?.ToString())))
+                            continue;
+
                         for (int column = 1; column <= range.Columns.Count; column++)
                         {
-                            object obj = (range.Cells[row, column] as Excel.Range).Value2;
+                            if (column > 1 && (range.Cells[1, column] == null || string.IsNullOrEmpty((range.Cells[1, column] as Excel.Range)?.Value2?.ToString())))
+                                break;
 
-                            string str = obj == null ? "" : obj.ToString(); // 셀 데이터 가져옴
+                            var obj = ((Excel.Range)range.Cells[row, column])?.Value2;
+
+                            var str = obj == null ? "" : obj.ToString(); // 셀 데이터 가져옴
 
                             dictionary[row].Add(str);
                         }
