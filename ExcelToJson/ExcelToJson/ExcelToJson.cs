@@ -76,7 +76,8 @@ namespace DTable
                         dictionary.Add(row, new List<string>());
 
                         if (row > 2 && (range.Cells[row, 2] == null || string.IsNullOrEmpty((range.Cells[row, 2] as Excel.Range)?.Value2?.ToString())))
-                            continue;
+                            break;
+                        
 
                         for (int column = 1; column <= range.Columns.Count; column++)
                         {
