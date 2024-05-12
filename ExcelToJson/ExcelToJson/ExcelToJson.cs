@@ -15,8 +15,19 @@ namespace DTable
             {
                 Console.WriteLine($"START");
 
+                var threads = new List<Thread>();
+
                 foreach (var path in args)
-                    Process(path);
+                {
+                    var thread = new Thread(() => Process(path));
+                    thread.Start();
+                    threads.Add(thread);
+                }
+
+                while (threads.Any(thread => thread.IsAlive))
+                {
+                    Thread.Sleep(100);
+                }
 
                 Console.WriteLine($"END");
             }
@@ -46,21 +57,7 @@ namespace DTable
             try
             {
                 excelApp = new Excel.Application(); // 엑셀 어플리케이션 생성
-                workBook = excelApp.Workbooks.Open(fileExcel,
-                    0,
-                    true,
-                    5,
-                    "",
-                    "",
-                    true,
-                    Excel.XlPlatform.xlWindows,
-                    "\t",
-                    false,
-                    false,
-                    0,
-                    true,
-                    1,
-                    0);
+                workBook = excelApp.Workbooks.Open(fileExcel);
 
                 // Sheet항목들을 돌아가면서 내용을 확인
                 foreach (Excel.Worksheet workSheet in workBook.Worksheets)
@@ -69,24 +66,29 @@ namespace DTable
 
                     Excel.Range range = workSheet.UsedRange; // 사용중인 셀 범위를 가져오기
 
+                    object[,] cellValues = (object[,])range.Value2;
+
+                    var rowCount = range.Rows.Count;
+                    var columnCount = range.Columns.Count;
+
                     var dictionary = new Dictionary<int, List<string>>();
 
-                    for (int row = 1; row <= range.Rows.Count; row++)
+                    for (var row = 1; row <= rowCount; row++)
                     {
                         dictionary.Add(row, new List<string>());
 
-                        if (row > 2 && (range.Cells[row, 2] == null || string.IsNullOrEmpty((range.Cells[row, 2] as Excel.Range)?.Value2?.ToString())))
+                        if (row > 2 && (cellValues[row, 2] == null))
+                            // || string.IsNullOrEmpty((range.Cells[row, 2] as Excel.Range)?.Value2?.ToString())))
                             break;
-                        
 
-                        for (int column = 1; column <= range.Columns.Count; column++)
+                        for (var column = 1; column <= columnCount; column++)
                         {
-                            if (column > 1 && (range.Cells[1, column] == null || string.IsNullOrEmpty((range.Cells[1, column] as Excel.Range)?.Value2?.ToString())))
+                            if (column > 1 && (cellValues[1, column] == null))
+                                // || string.IsNullOrEmpty((range.Cells[1, column] as Excel.Range)?.Value2?.ToString())))
                                 break;
 
-                            var obj = ((Excel.Range)range.Cells[row, column])?.Value2;
-
-                            var str = obj == null ? "" : obj.ToString(); // 셀 데이터 가져옴
+                            var cellValue = cellValues[row, column];
+                            var str = cellValue == null ? "" : cellValue.ToString(); // 셀 데이터 가져옴
 
                             dictionary[row].Add(str);
                         }
@@ -95,7 +97,7 @@ namespace DTable
                     var json = JsonConvert.SerializeObject(dictionary, Formatting.Indented);
 
                     var saveFolder = new DirectoryInfo($"{AppDomain.CurrentDomain.BaseDirectory}/Jsons");
-                    
+
                     if (saveFolder.Exists == false)
                         saveFolder.Create();
 
