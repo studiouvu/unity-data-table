@@ -62,6 +62,9 @@ namespace DTable
                 // Sheet항목들을 돌아가면서 내용을 확인
                 foreach (Excel.Worksheet workSheet in workBook.Worksheets)
                 {
+                    if (workSheet.Name.Contains('#'))
+                        continue;
+                    
                     Console.WriteLine($"Sheet name : {workSheet.Name}");
 
                     Excel.Range range = workSheet.UsedRange; // 사용중인 셀 범위를 가져오기
@@ -78,13 +81,11 @@ namespace DTable
                         dictionary.Add(row, new List<string>());
 
                         if (row > 2 && (cellValues[row, 2] == null))
-                            // || string.IsNullOrEmpty((range.Cells[row, 2] as Excel.Range)?.Value2?.ToString())))
                             break;
 
                         for (var column = 1; column <= columnCount; column++)
                         {
                             if (column > 1 && (cellValues[1, column] == null))
-                                // || string.IsNullOrEmpty((range.Cells[1, column] as Excel.Range)?.Value2?.ToString())))
                                 break;
 
                             var cellValue = cellValues[row, column];
@@ -101,7 +102,7 @@ namespace DTable
                     if (saveFolder.Exists == false)
                         saveFolder.Create();
 
-                    var fileName = $"{AppDomain.CurrentDomain.BaseDirectory}/Jsons/{workBook.Name.Replace(".xlsx", "")}.json";
+                    var fileName = $"{AppDomain.CurrentDomain.BaseDirectory}/Jsons/{workSheet.Name.Replace(".xlsx", "")}.json";
 
                     File.WriteAllText(fileName, json);
 
