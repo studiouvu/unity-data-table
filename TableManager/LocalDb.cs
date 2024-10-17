@@ -15,11 +15,6 @@ namespace TableManager
     {
         private static Dictionary<Type, Dictionary<string, object>> Dictionary = new();
 
-        static LocalDb()
-        {
-            Init();
-        }
-
         public static void Init()
         {
             Dictionary.Clear();
@@ -32,38 +27,48 @@ namespace TableManager
 
             foreach (var type in types)
             {
-                var typeName = type
-                    .ToString()
-                    .Replace($"{nameof(TableManager)}.", "")
-                    .Replace("Row", "");
-
-                var json = $"Jsons/{typeName}.json".Load<TextAsset>().text;
-
-                var jsonDictionary = JsonConvert.DeserializeObject<Dictionary<int, List<string>>>(json);
-
-                Dictionary.Add(type, new Dictionary<string, object>());
-
-                for (var i = 4; i <= jsonDictionary.Count; i++)
+                try
                 {
-                    if (jsonDictionary[i][0] == "#" || string.IsNullOrEmpty(jsonDictionary[i][1]))
-                        continue;
+                    var typeName = type
+                        .ToString()
+                        .Replace($"{nameof(TableManager)}.", "")
+                        .Replace("Row", "");
 
-                    var instance = Activator.CreateInstance(type);
+                    var json = $"Jsons/{typeName}.json".Load<TextAsset>().text;
 
-                    var tableFields = type
-                        .GetProperties()
-                        .ToDictionary(info => info.Name, info => info);
+                    var jsonDictionary = JsonConvert.DeserializeObject<Dictionary<int, List<string>>>(json);
 
-                    for (var c = 0; c < jsonDictionary[1].Count; c++)
+                    Dictionary.Add(type, new Dictionary<string, object>());
+
+                    for (var i = 4; i <= jsonDictionary.Count; i++)
                     {
-                        if (string.IsNullOrEmpty(jsonDictionary[1][c]) || jsonDictionary[1][c] == "#")
+                        if (jsonDictionary[i].Count == 0)
+                            continue;
+                        if (jsonDictionary[i][0] == "#" || string.IsNullOrEmpty(jsonDictionary[i][1]))
                             continue;
 
-                        var fieldName = jsonDictionary[3][c];
-                        ApplyValue(tableFields[fieldName], instance, jsonDictionary[i][c]);
-                    }
+                        var instance = Activator.CreateInstance(type);
 
-                    Dictionary[type].Add((instance as IRow).id, instance);
+                        var tableFields = type
+                            .GetProperties()
+                            .ToDictionary(info => info.Name, info => info);
+
+                        for (var c = 0; c < jsonDictionary[1].Count; c++)
+                        {
+                            if (string.IsNullOrEmpty(jsonDictionary[1][c]) || jsonDictionary[1][c] == "#")
+                                continue;
+
+                            var fieldName = jsonDictionary[3][c];
+                            ApplyValue(tableFields[fieldName], instance, jsonDictionary[i][c]);
+                        }
+
+                        Dictionary[type].TryAdd((instance as IRow)?.id, instance);
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"{type} {e.ToString()}");
+                    throw;
                 }
             }
         }
@@ -73,9 +78,22 @@ namespace TableManager
             return Dictionary[typeof(T)][id] as T;
         }
 
+        public static T TryGet<T>(string id) where T : class, IRow, new()
+        {
+            if (!Dictionary[typeof(T)].ContainsKey(id))
+                return null;
+
+            return Dictionary[typeof(T)][id] as T;
+        }
+
         public static IEnumerable<T> GetEnumerable<T>() where T : class, IRow, new()
         {
             return Dictionary[typeof(T)].Select(pair => pair.Value as T);
+        }
+
+        public static Dictionary<string, T> GetDictionary<T>() where T : class, IRow, new()
+        {
+            return Dictionary[typeof(T)].ToDictionary(pair => pair.Key, pair => pair.Value as T);
         }
 
         private static void ApplyValue(PropertyInfo field, object instance, string rvalue)
@@ -92,6 +110,18 @@ namespace TableManager
             {
                 field.SetValue(instance, rvalue);
             }
+            else if (field.PropertyType == typeof(double))
+            {
+                field.SetValue(instance, double.Parse(rvalue));
+            }
+            else if (field.PropertyType == typeof(long))
+            {
+                field.SetValue(instance, long.Parse(rvalue));
+            }
+            else if (field.PropertyType == typeof(bool))
+            {
+                field.SetValue(instance, bool.Parse(rvalue));
+            }
             else
             {
                 try
@@ -100,11 +130,11 @@ namespace TableManager
                 }
                 catch (Exception e)
                 {
+                    Debug.LogError($"e");
                     throw new ArgumentOutOfRangeException(
                         $"string => {field.PropertyType} {rvalue} 에 대한 바인딩 정의가 없습니다.");
                 }
             }
         }
-
     }
 }
