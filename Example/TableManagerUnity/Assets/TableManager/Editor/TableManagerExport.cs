@@ -42,9 +42,8 @@ namespace TableManager
                 CreateClassFiles();
 
                 Debug.Log($"[{nameof(TableManager)}] Export End");
+                
                 AssetDatabase.Refresh();
-
-                LocalDb.Init();
             }
             catch (Exception e)
             {
@@ -87,7 +86,7 @@ namespace TableManager
 
             await ao;
 
-            await File.WriteAllBytesAsync(Application.dataPath + "/Excels/DownloadData.xlsx", ao.webRequest.downloadHandler.data);
+            await File.WriteAllBytesAsync(Application.dataPath + "/Excels/download.xlsx", ao.webRequest.downloadHandler.data);
 
             Debug.Log(ao.webRequest.result.ToString());
         }
@@ -153,10 +152,15 @@ namespace TableManager
 
                 for (var i = 0; i < jsonDictionary[1].Count; i++)
                 {
-                    if (string.IsNullOrEmpty(jsonDictionary[1][i]) || jsonDictionary[1][i] == "#")
+                    var valueType = jsonDictionary[1][i];
+                    
+                    if (string.IsNullOrEmpty(valueType) || valueType == "#" || valueType == "[]")
                         continue;
 
-                    stringBuilder.Append($"        /* {jsonDictionary[2][i]} */\n        public {jsonDictionary[1][i]} {jsonDictionary[3][i]} {{ get; set; }} \n\n");
+                    var valueDesc = jsonDictionary[2][i];
+                    var valueName = jsonDictionary[3][i];
+                    
+                    stringBuilder.Append($"        /* {valueDesc} */\n        public {valueType} {valueName} {{ get; set; }} \n\n");
                 }
 
                 var template = File.ReadAllText(TableManagerConfig.FolderPath + "/Editor/ClassTemplate.txt");

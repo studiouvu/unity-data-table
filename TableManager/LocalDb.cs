@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Cysharp.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEngine;
 namespace TableManager
@@ -11,14 +12,25 @@ namespace TableManager
         string id { get; }
     }
 
+    public interface IIndex
+    {
+        int index { get; }
+    }
+
     public static class LocalDb
     {
         private static Dictionary<Type, Dictionary<string, object>> Dictionary = new();
+        private static Dictionary<Type, Dictionary<int, object>> IndexDictionary = new();
 
-        public static void Init()
+        public static UniTask.Awaiter Init()
         {
             Dictionary.Clear();
+            IndexDictionary.Clear();
+            return InitAsync().GetAwaiter();
+        }
 
+        private static async UniTask InitAsync()
+        {
             var types = Assembly
                 .GetExecutingAssembly()
                 .GetTypes()
@@ -39,6 +51,7 @@ namespace TableManager
                     var jsonDictionary = JsonConvert.DeserializeObject<Dictionary<int, List<string>>>(json);
 
                     Dictionary.Add(type, new Dictionary<string, object>());
+                    IndexDictionary.Add(type, new Dictionary<int, object>());
 
                     for (var i = 4; i <= jsonDictionary.Count; i++)
                     {
@@ -53,16 +66,61 @@ namespace TableManager
                             .GetProperties()
                             .ToDictionary(info => info.Name, info => info);
 
+                        var isArray = false;
+                        var arrayFieldName = string.Empty;
+                        var arrayValueList = new LinkedList<string>();
+
                         for (var c = 0; c < jsonDictionary[1].Count; c++)
                         {
-                            if (string.IsNullOrEmpty(jsonDictionary[1][c]) || jsonDictionary[1][c] == "#")
+                            var fieldType = jsonDictionary[1][c];
+
+                            if (fieldType == "#")
                                 continue;
 
                             var fieldName = jsonDictionary[3][c];
-                            ApplyValue(tableFields[fieldName], instance, jsonDictionary[i][c]);
+                            var value = jsonDictionary[i][c];
+
+                            if (fieldType.Contains("[]"))
+                            {
+                                if (!string.IsNullOrEmpty(fieldName))
+                                {
+                                    isArray = true;
+                                    arrayFieldName = fieldName.Replace("[]", "");
+                                    arrayValueList.Clear();
+                                    if (!string.IsNullOrEmpty(value))
+                                        arrayValueList.AddLast(value);
+                                }
+                                else
+                                {
+                                    if (!string.IsNullOrEmpty(value))
+                                    {
+                                        arrayValueList.AddLast(value);
+                                    }
+                                    else
+                                    {
+                                        ApplyValueArray(tableFields[arrayFieldName], instance, arrayValueList.ToArray());
+                                        isArray = false;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                if (isArray)
+                                {
+                                    ApplyValueArray(tableFields[arrayFieldName], instance, arrayValueList.ToArray());
+                                    isArray = false;
+                                }
+
+                                ApplyValue(tableFields[fieldName], instance, value);
+                            }
                         }
 
-                        Dictionary[type].TryAdd((instance as IRow)?.id, instance);
+                        var id = (instance as IRow)?.id;
+
+                        Dictionary[type].TryAdd(id, instance);
+
+                        if (instance is IIndex indexRow)
+                            IndexDictionary[type].TryAdd(indexRow.index, instance);
                     }
                 }
                 catch (Exception e)
@@ -70,12 +128,18 @@ namespace TableManager
                     Debug.LogError($"{type} {e.ToString()}");
                     throw;
                 }
+                await UniTask.Yield();
             }
         }
 
         public static T Get<T>(string id) where T : class, IRow, new()
         {
             return Dictionary[typeof(T)][id] as T;
+        }
+
+        public static T GetToIndex<T>(int index) where T : class, IRow, new()
+        {
+            return IndexDictionary[typeof(T)][index] as T;
         }
 
         public static T TryGet<T>(string id) where T : class, IRow, new()
@@ -134,6 +198,39 @@ namespace TableManager
                     throw new ArgumentOutOfRangeException(
                         $"string => {field.PropertyType} {rvalue} 에 대한 바인딩 정의가 없습니다.");
                 }
+            }
+        }
+
+        private static void ApplyValueArray(PropertyInfo field, object instance, string[] values)
+        {
+            if (field.PropertyType == typeof(int[]))
+            {
+                field.SetValue(instance, values.Select(int.Parse).ToArray());
+            }
+            else if (field.PropertyType == typeof(float[]))
+            {
+                field.SetValue(instance, values.Select(float.Parse).ToArray());
+            }
+            else if (field.PropertyType == typeof(string[]))
+            {
+                field.SetValue(instance, values);
+            }
+            else if (field.PropertyType == typeof(double[]))
+            {
+                field.SetValue(instance, values.Select(double.Parse).ToArray());
+            }
+            else if (field.PropertyType == typeof(long[]))
+            {
+                field.SetValue(instance, values.Select(long.Parse).ToArray());
+            }
+            else if (field.PropertyType == typeof(bool[]))
+            {
+                field.SetValue(instance, values.Select(bool.Parse).ToArray());
+            }
+            else
+            {
+                throw new ArgumentOutOfRangeException(
+                    $"string => {field.PropertyType} {values} 에 대한 바인딩 정의가 없습니다.");
             }
         }
     }

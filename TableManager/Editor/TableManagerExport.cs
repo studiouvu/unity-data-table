@@ -1,33 +1,107 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
+using TableManager.Editor;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Networking;
 using Debug = UnityEngine.Debug;
 
 namespace TableManager
 {
     public static class TableManagerExport
     {
+        public const string ClientId = "";
+        public const string ClientSecret = "";
+        public const string ApiKey = "";
+        
         [MenuItem("TableManager/Export %F8")]
-        public static void Export()
+        public static async void Export()
         {
-            Debug.Log($"[{nameof(TableManager)}] Export Start");
-            var result = ExportExcelToJson();
+            try
+            {
+                Debug.Log($"[{nameof(TableManager)}] Export Start");
 
-            if (result != 100)
-                return;
+                await GoogleSheetDownload();
 
-            Debug.Log($"[{nameof(TableManager)}] Create Class Start");
-            CreateClassFiles();
+                var result = ExportExcelToJson();
 
-            Debug.Log($"[{nameof(TableManager)}] Export End");
-            AssetDatabase.Refresh();
+                if (result != 100)
+                    return;
 
-            LocalDb.Init();
+                Debug.Log($"[{nameof(TableManager)}] Create Class Start");
+                CreateClassFiles();
+
+                Debug.Log($"[{nameof(TableManager)}] Export End");
+                
+                AssetDatabase.Refresh();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
+        }
+
+        private static async Task GoogleSheetDownload()
+        {
+            var ab = new GoogleAuthApi();
+
+            string token = null;
+
+            if (!File.Exists(GoogleAuthApi.GoogleLoginDataPath))
+            {
+                await GetToken(ab);
+            }
+            else
+            {
+                var text = await File.ReadAllTextAsync(GoogleAuthApi.GoogleLoginDataPath);
+                var loginData = JsonConvert.DeserializeObject<GoogleLogin>(text);
+
+                if (DateTime.Now > loginData.expireTime)
+                {
+                    await GoogleAuthApi.RequestRefreshToken(ClientId, ClientSecret, loginData);
+                }
+                
+                token = loginData.accessToken;
+            }
+
+            var json = await ab.RequestSheetInfo(ApiKey, token, "1I_-ztdMD6ffRZ2BFE55J4F9_yNSuyy_nZUKB-UHbMss");
+
+            var url = "https://www.googleapis.com/drive/v3/files/1I_-ztdMD6ffRZ2BFE55J4F9_yNSuyy_nZUKB-UHbMss/export?mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+            var www = UnityWebRequest.Get(url);
+            www.SetRequestHeader("Authorization", "Bearer " + token);
+
+            var ao = www.SendWebRequest(); // 응답이 올때까지 대기한다.
+
+            await ao;
+
+            await File.WriteAllBytesAsync(Application.dataPath + "/Excels/download.xlsx", ao.webRequest.downloadHandler.data);
+
+            Debug.Log(ao.webRequest.result.ToString());
+        }
+
+        private static async Task GetToken(GoogleAuthApi authApi)
+        {
+            try
+            {
+                await authApi.DoOAuthAsync(ClientId, ClientSecret);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
         }
 
         private static int ExportExcelToJson()
@@ -78,10 +152,15 @@ namespace TableManager
 
                 for (var i = 0; i < jsonDictionary[1].Count; i++)
                 {
-                    if (string.IsNullOrEmpty(jsonDictionary[1][i]) || jsonDictionary[1][i] == "#")
+                    var valueType = jsonDictionary[1][i];
+                    
+                    if (string.IsNullOrEmpty(valueType) || valueType == "#" || valueType == "[]")
                         continue;
 
-                    stringBuilder.Append($"        /* {jsonDictionary[2][i]} */\n        public {jsonDictionary[1][i]} {jsonDictionary[3][i]} {{ get; set; }} \n\n");
+                    var valueDesc = jsonDictionary[2][i];
+                    var valueName = jsonDictionary[3][i];
+                    
+                    stringBuilder.Append($"        /* {valueDesc} */\n        public {valueType} {valueName} {{ get; set; }} \n\n");
                 }
 
                 var template = File.ReadAllText(TableManagerConfig.FolderPath + "/Editor/ClassTemplate.txt");
@@ -92,5 +171,41 @@ namespace TableManager
                         .Replace("@", stringBuilder.ToString()));
             }
         }
+
+    }
+}
+
+public struct UnityWebRequestAwaiter : INotifyCompletion
+{
+    private UnityWebRequestAsyncOperation asyncOp;
+    private Action continuation;
+
+    public UnityWebRequestAwaiter(UnityWebRequestAsyncOperation asyncOp)
+    {
+        this.asyncOp = asyncOp;
+        continuation = null;
+    }
+
+    public bool IsCompleted { get { return asyncOp.isDone; } }
+
+    public void GetResult() {}
+
+    public void OnCompleted(Action continuation)
+    {
+        this.continuation = continuation;
+        asyncOp.completed += OnRequestCompleted;
+    }
+
+    private void OnRequestCompleted(AsyncOperation obj)
+    {
+        continuation?.Invoke();
+    }
+}
+
+public static class ExtensionMethods
+{
+    public static UnityWebRequestAwaiter GetAwaiter(this UnityWebRequestAsyncOperation asyncOp)
+    {
+        return new UnityWebRequestAwaiter(asyncOp);
     }
 }
