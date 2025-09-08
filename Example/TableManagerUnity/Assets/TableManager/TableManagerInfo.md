@@ -1,0 +1,5 @@
+- TableManager (Unity Data Table)
+- Version
+    - 2025.9.8
+- Github
+    - https://github.com/studiouvu/unity-data-table

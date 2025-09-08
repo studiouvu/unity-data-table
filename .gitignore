@@ -39,11 +39,16 @@ sysinfo.txt
 *.log
 
 # CUSTOM
+bin/
 *.DS_Store
-Assets/FR2_Cache.asset
-Assets/FR2_Cache.asset.meta
-ScreenShots
+*/FR2_Cache.asset*
+ScreenShots/
 ~$*
-ExcelToJson/ExcelToJson/bin
-Example/TableManagerUnity/Assets/TableManager/Editor/GoogleLogin.json.meta
-Example/TableManagerUnity/Assets/TableManager/Editor/GoogleLogin.json
+*.csproj
+*GoogleLogin.json*
+*google-services-desktop.json*
+*.vscode
+*launchSettings.json
+*~
+*editorConfig.json*
+*GoogleSheetConfig.asset*

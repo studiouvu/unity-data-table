@@ -1,9 +1,0 @@
-using Enums;
-
-namespace TableManager
-{
-    public partial class # : IRow
-    {
-@
-    }
-}

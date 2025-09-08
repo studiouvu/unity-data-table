@@ -3,14 +3,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using TableManager.Editor;
+using Unity.Plastic.Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -20,10 +18,23 @@ namespace TableManager
 {
     public static class TableManagerExport
     {
-        public const string ClientId = "";
-        public const string ClientSecret = "";
-        public const string ApiKey = "";
-        
+        private static string ClientId => Config.clientId;
+        private static string ClientSecret => Config.clientSecret;
+        private static string ApiKey => Config.apiKey;
+        private static string SheetId => Config.sheetId;
+
+        private static GoogleSheetConfig Config
+        {
+            get {
+                if (config == null)
+                    config = AssetDatabase.LoadAssetAtPath<GoogleSheetConfig>($"Assets/{nameof(TableManager)}/Editor/GoogleSheetConfig.asset");
+                return config;
+            }
+        }
+
+        private static GoogleSheetConfig config;
+
+
         [MenuItem("TableManager/Export %F8")]
         public static async void Export()
         {
@@ -31,29 +42,34 @@ namespace TableManager
             {
                 Debug.Log($"[{nameof(TableManager)}] Export Start");
 
-                await GoogleSheetDownload();
+                var sheetDownloadResult = await GoogleSheetDownload();
 
-                var result = ExportExcelToJson();
+                if (!sheetDownloadResult)
+                    return;
 
-                if (result != 100)
+                var excelToJsonResult = ExportExcelToJson();
+                
+                if (!excelToJsonResult)
                     return;
 
                 Debug.Log($"[{nameof(TableManager)}] Create Class Start");
                 CreateClassFiles();
 
                 Debug.Log($"[{nameof(TableManager)}] Export End");
-                
+
                 AssetDatabase.Refresh();
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
+                Debug.LogError(e);
                 throw;
             }
         }
 
-        private static async Task GoogleSheetDownload()
+        private static async Task<bool> GoogleSheetDownload()
         {
+            Debug.Log($"TableManagerExport.GoogleSheetDownload - Start");
+
             var ab = new GoogleAuthApi();
 
             string token = null;
@@ -71,13 +87,18 @@ namespace TableManager
                 {
                     await GoogleAuthApi.RequestRefreshToken(ClientId, ClientSecret, loginData);
                 }
-                
+
                 token = loginData.accessToken;
             }
 
-            var json = await ab.RequestSheetInfo(ApiKey, token, "1I_-ztdMD6ffRZ2BFE55J4F9_yNSuyy_nZUKB-UHbMss");
+            var jsonText = await ab.RequestSheetInfo(ApiKey, token, SheetId);
 
-            var url = "https://www.googleapis.com/drive/v3/files/1I_-ztdMD6ffRZ2BFE55J4F9_yNSuyy_nZUKB-UHbMss/export?mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            Debug.Log($"TableManagerExport.GoogleSheetDownload - json : {jsonText}");
+
+            var jObject = JObject.Parse(jsonText);
+            var sheetTitle = jObject["properties"]?["title"]?.ToString();
+
+            var url = $"https://www.googleapis.com/drive/v3/files/{SheetId}/export?mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
             var www = UnityWebRequest.Get(url);
             www.SetRequestHeader("Authorization", "Bearer " + token);
@@ -86,9 +107,11 @@ namespace TableManager
 
             await ao;
 
-            await File.WriteAllBytesAsync(Application.dataPath + "/Excels/download.xlsx", ao.webRequest.downloadHandler.data);
+            await File.WriteAllBytesAsync(Application.dataPath + $"/Excels/{sheetTitle}.xlsx", ao.webRequest.downloadHandler.data);
 
-            Debug.Log(ao.webRequest.result.ToString());
+            Debug.Log($"TableManagerExport.GoogleSheetDownload - {ao.webRequest.result.ToString()}");
+
+            return ao.webRequest.result == UnityWebRequest.Result.Success;
         }
 
         private static async Task GetToken(GoogleAuthApi authApi)
@@ -104,7 +127,7 @@ namespace TableManager
             }
         }
 
-        private static int ExportExcelToJson()
+        private static bool ExportExcelToJson()
         {
             var directoryInfo = new DirectoryInfo(TableManagerConfig.ExcelDataPath);
             var files = directoryInfo.GetFiles("*", SearchOption.AllDirectories);
@@ -125,9 +148,9 @@ namespace TableManager
 
             var exe_name = TableManagerConfig.FolderPath + "/ExcelToJson.exe";
             var process = Process.Start(exe_name, stringBuilder.ToString());
-
             process.WaitForExit();
-            return process.ExitCode;
+
+            return process.ExitCode == 100;
         }
 
         private static void CreateClassFiles()
@@ -153,13 +176,13 @@ namespace TableManager
                 for (var i = 0; i < jsonDictionary[1].Count; i++)
                 {
                     var valueType = jsonDictionary[1][i];
-                    
+
                     if (string.IsNullOrEmpty(valueType) || valueType == "#" || valueType == "[]")
                         continue;
 
                     var valueDesc = jsonDictionary[2][i];
                     var valueName = jsonDictionary[3][i];
-                    
+
                     stringBuilder.Append($"        /* {valueDesc} */\n        public {valueType} {valueName} {{ get; set; }} \n\n");
                 }
 

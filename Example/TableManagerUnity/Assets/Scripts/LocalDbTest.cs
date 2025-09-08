@@ -1,19 +1,29 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using TableManager;
 using UnityEngine;
 
 public class LocalDbTest : MonoBehaviour
 {
-    private void Start()
+    private IEnumerator Start()
     {
-        var itemDataRow = LocalDb.Get<ItemDataRow>("test");
-        Debug.Log($"{itemDataRow.id} {itemDataRow.price} {itemDataRow.currencyType}");
+        LocalDb.Init();
 
-        foreach (var testDataRow in LocalDb.GetEnumerable<TestDataRow>())
+        yield return new WaitUntil(() => LocalDb.HasInit);
+
+        var itemDataRow = LocalDb.Get<DataItemRow>("test");
+        Debug.Log($"LocalDbTest.Start - DataItemRow {itemDataRow.id} {itemDataRow.price} {itemDataRow.currencyType}");
+
+        var stringBuilder = new System.Text.StringBuilder();
+        
+        foreach (var testDataRow in LocalDb.GetEnumerable<DataCurrencyRow>())
         {
-            Debug.Log($"{testDataRow.id} {testDataRow.name} {testDataRow.age}");
+            stringBuilder.Clear();
+            
+            foreach (var variable in testDataRow.testArray)
+                stringBuilder.Append($"{variable.ToString()} ");
+
+            Debug.Log($"LocalDbTest.Start - DataCurrencyRow id : {testDataRow.id}\nnameId : {testDataRow.nameId}" +
+                      $"\ntestArray : {stringBuilder}");
         }
     }
 }

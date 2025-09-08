@@ -19,14 +19,22 @@ namespace TableManager
 
     public static class LocalDb
     {
-        private static Dictionary<Type, Dictionary<string, object>> Dictionary = new();
-        private static Dictionary<Type, Dictionary<int, object>> IndexDictionary = new();
+        public static bool HasInit { get; private set; }
 
-        public static UniTask.Awaiter Init()
+        private static readonly Dictionary<Type, Dictionary<string, object>> Dictionary = new();
+        private static readonly Dictionary<Type, Dictionary<int, object>> IndexDictionary = new();
+        private static bool isRunning;
+
+        public static void Init()
         {
+            if (isRunning)
+                return;
+            
+            isRunning = true;
+
             Dictionary.Clear();
             IndexDictionary.Clear();
-            return InitAsync().GetAwaiter();
+            InitAsync().Forget();
         }
 
         private static async UniTask InitAsync()
@@ -53,11 +61,11 @@ namespace TableManager
                     Dictionary.Add(type, new Dictionary<string, object>());
                     IndexDictionary.Add(type, new Dictionary<int, object>());
 
-                    for (var i = 4; i <= jsonDictionary.Count; i++)
+                    for (var y = 4; y <= jsonDictionary.Count; y++)
                     {
-                        if (jsonDictionary[i].Count == 0)
+                        if (jsonDictionary[y].Count == 0)
                             continue;
-                        if (jsonDictionary[i][0] == "#" || string.IsNullOrEmpty(jsonDictionary[i][1]))
+                        if (jsonDictionary[y][0] == "#" || string.IsNullOrEmpty(jsonDictionary[y][1]))
                             continue;
 
                         var instance = Activator.CreateInstance(type);
@@ -66,51 +74,40 @@ namespace TableManager
                             .GetProperties()
                             .ToDictionary(info => info.Name, info => info);
 
-                        var isArray = false;
                         var arrayFieldName = string.Empty;
                         var arrayValueList = new LinkedList<string>();
 
-                        for (var c = 0; c < jsonDictionary[1].Count; c++)
+                        for (var x = 0; x < jsonDictionary[1].Count; x++)
                         {
-                            var fieldType = jsonDictionary[1][c];
+                            var fieldType = jsonDictionary[1][x];
+                            var nextFieldType = (x + 1 < jsonDictionary[1].Count) ? jsonDictionary[1][x + 1] : null;
 
                             if (fieldType == "#")
                                 continue;
 
-                            var fieldName = jsonDictionary[3][c];
-                            var value = jsonDictionary[i][c];
+                            var fieldName = jsonDictionary[3][x];
+                            var value = jsonDictionary[y][x];
 
                             if (fieldType.Contains("[]"))
                             {
-                                if (!string.IsNullOrEmpty(fieldName))
+                                if (fieldName.IsNotEmpty())
                                 {
-                                    isArray = true;
                                     arrayFieldName = fieldName.Replace("[]", "");
                                     arrayValueList.Clear();
-                                    if (!string.IsNullOrEmpty(value))
+                                    if (value.IsNotEmpty())
                                         arrayValueList.AddLast(value);
                                 }
                                 else
                                 {
-                                    if (!string.IsNullOrEmpty(value))
-                                    {
+                                    if (value.IsNotEmpty())
                                         arrayValueList.AddLast(value);
-                                    }
-                                    else
-                                    {
+
+                                    if (nextFieldType != "[]")
                                         ApplyValueArray(tableFields[arrayFieldName], instance, arrayValueList.ToArray());
-                                        isArray = false;
-                                    }
                                 }
                             }
                             else
                             {
-                                if (isArray)
-                                {
-                                    ApplyValueArray(tableFields[arrayFieldName], instance, arrayValueList.ToArray());
-                                    isArray = false;
-                                }
-
                                 ApplyValue(tableFields[fieldName], instance, value);
                             }
                         }
@@ -130,6 +127,7 @@ namespace TableManager
                 }
                 await UniTask.Yield();
             }
+            HasInit = true;
         }
 
         public static T Get<T>(string id) where T : class, IRow, new()
@@ -192,9 +190,8 @@ namespace TableManager
                 {
                     field.SetValue(instance, Enum.Parse(field.PropertyType, rvalue));
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
-                    Debug.LogError($"e");
                     throw new ArgumentOutOfRangeException(
                         $"string => {field.PropertyType} {rvalue} 에 대한 바인딩 정의가 없습니다.");
                 }
