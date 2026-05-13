@@ -4,7 +4,8 @@ namespace TableManager
     public static class TableManagerConfig
     {
         public static string FolderPath => Application.dataPath + "/TableManager";
+        public static string LaunchFolderPath => Application.dataPath + "/../../.excel-to-json";
         public static string ExcelDataPath => $"{Application.dataPath}/Excels";
-        public static string JsonDataPath => $"{FolderPath}/Jsons";
+        public static string JsonDataPath => $"{Application.dataPath}/Jsons";
     }
 }

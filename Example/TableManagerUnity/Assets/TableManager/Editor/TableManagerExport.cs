@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -12,63 +11,141 @@ using Unity.Plastic.Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
-using Debug = UnityEngine.Debug;
 
 namespace TableManager
 {
     public static class TableManagerExport
     {
-        private static string ClientId => Config.clientId;
-        private static string ClientSecret => Config.clientSecret;
-        private static string ApiKey => Config.apiKey;
-        private static string SheetId => Config.sheetId;
+        private static readonly string GoogleConfigJsonPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".table-manager",
+            $"{nameof(Editor.GoogleConfig)}.json");
 
-        private static GoogleSheetConfig Config
+        private static readonly string GoogleSheetIdsJsonPath = Path.Combine(
+            Application.dataPath,
+            "TableManager",
+            "Editor",
+            $"{nameof(Editor.GoogleSheetIds)}.json");
+
+        private static GoogleConfig GoogleConfig
         {
-            get {
-                if (config == null)
-                    config = AssetDatabase.LoadAssetAtPath<GoogleSheetConfig>($"Assets/{nameof(TableManager)}/Editor/GoogleSheetConfig.asset");
+            get
+            {
+                if (config != null)
+                    return config;
+
+                config = new GoogleConfig();
+
+                if (File.Exists(GoogleConfigJsonPath))
+                {
+                    JsonUtility.FromJsonOverwrite(File.ReadAllText(GoogleConfigJsonPath), config);
+                    return config;
+                }
+
+                SaveConfigJson();
+                EditorUtility.RevealInFinder(GoogleConfigJsonPath);
                 return config;
             }
         }
 
-        private static GoogleSheetConfig config;
+        private static GoogleConfig config;
+
+        private static GoogleSheetIds GoogleSheetIds
+        {
+            get
+            {
+                if (sheetIds != null)
+                    return sheetIds;
+
+                sheetIds = new GoogleSheetIds();
+
+                if (File.Exists(GoogleSheetIdsJsonPath))
+                {
+                    JsonUtility.FromJsonOverwrite(File.ReadAllText(GoogleSheetIdsJsonPath), sheetIds);
+                    return sheetIds;
+                }
+
+                SaveSheetIdsJson();
+                EditorUtility.RevealInFinder(GoogleSheetIdsJsonPath);
+                return sheetIds;
+            }
+        }
+
+        private static GoogleSheetIds sheetIds;
+
+        private static void SaveConfigJson()
+        {
+            var dir = Path.GetDirectoryName(GoogleConfigJsonPath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+            File.WriteAllText(GoogleConfigJsonPath, JsonUtility.ToJson(config, true));
+        }
+
+        private static void SaveSheetIdsJson()
+        {
+            var dir = Path.GetDirectoryName(GoogleSheetIdsJsonPath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+            File.WriteAllText(GoogleSheetIdsJsonPath, JsonUtility.ToJson(sheetIds, true));
+        }
 
 
         [MenuItem("TableManager/Export %F8")]
         public static async void Export()
         {
-            try
+            Debug.Log($"[{nameof(TableManager)}] Export Start");
+
+            var targetSheetIds = GoogleSheetIds.sheetIds;
+
+            if (targetSheetIds != null && targetSheetIds.Count > 0)
             {
-                Debug.Log($"[{nameof(TableManager)}] Export Start");
-
-                var sheetDownloadResult = await GoogleSheetDownload();
-
-                if (!sheetDownloadResult)
+                if (!ValidateConfig())
                     return;
 
-                var excelToJsonResult = ExportExcelToJson();
-                
-                if (!excelToJsonResult)
-                    return;
+                foreach (var sheetId in targetSheetIds)
+                {
+                    if (string.IsNullOrEmpty(sheetId))
+                        continue;
 
-                Debug.Log($"[{nameof(TableManager)}] Create Class Start");
-                CreateClassFiles();
+                    var sheetDownloadResult = await GoogleSheetDownload(sheetId);
 
-                Debug.Log($"[{nameof(TableManager)}] Export End");
-
-                AssetDatabase.Refresh();
+                    if (!sheetDownloadResult)
+                        return;
+                }
             }
-            catch (Exception e)
-            {
-                Debug.LogError(e);
-                throw;
-            }
+
+            var excelToJsonResult = ExportExcelToJson();
+
+            if (!excelToJsonResult)
+                return;
+
+            Debug.Log($"[{nameof(TableManager)}] Create Class Start");
+            CreateClassFiles();
+
+            Debug.Log($"[{nameof(TableManager)}] Export End");
+
+            AssetDatabase.Refresh();
+
         }
 
-        private static async Task<bool> GoogleSheetDownload()
+        private static bool ValidateConfig()
         {
-            Debug.Log($"TableManagerExport.GoogleSheetDownload - Start");
+            var c = GoogleConfig;
+            if (string.IsNullOrEmpty(c.clientId)
+                || string.IsNullOrEmpty(c.clientSecret)
+                || string.IsNullOrEmpty(c.apiKey))
+            {
+                EditorUtility.RevealInFinder(GoogleConfigJsonPath);
+                Debug.LogError(
+                    $"[{nameof(TableManager)}] Please fill in clientId/clientSecret/apiKey in {GoogleConfigJsonPath}.");
+                return false;
+            }
+            return true;
+        }
+
+        private static async Task<bool> GoogleSheetDownload(string sheetId)
+        {
+            Debug.Log($"TableManagerExport.GoogleSheetDownload - Start sheetId={sheetId}");
 
             var ab = new GoogleAuthApi();
 
@@ -85,20 +162,20 @@ namespace TableManager
 
                 if (DateTime.Now > loginData.expireTime)
                 {
-                    await GoogleAuthApi.RequestRefreshToken(ClientId, ClientSecret, loginData);
+                    await GoogleAuthApi.RequestRefreshToken(config.clientId, config.clientSecret, loginData);
                 }
 
                 token = loginData.accessToken;
             }
 
-            var jsonText = await ab.RequestSheetInfo(ApiKey, token, SheetId);
+            var jsonText = await ab.RequestSheetInfo(config.apiKey, token, sheetId);
 
             Debug.Log($"TableManagerExport.GoogleSheetDownload - json : {jsonText}");
 
             var jObject = JObject.Parse(jsonText);
             var sheetTitle = jObject["properties"]?["title"]?.ToString();
 
-            var url = $"https://www.googleapis.com/drive/v3/files/{SheetId}/export?mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            var url = $"https://www.googleapis.com/drive/v3/files/{sheetId}/export?mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
             var www = UnityWebRequest.Get(url);
             www.SetRequestHeader("Authorization", "Bearer " + token);
@@ -118,7 +195,7 @@ namespace TableManager
         {
             try
             {
-                await authApi.DoOAuthAsync(ClientId, ClientSecret);
+                await authApi.DoOAuthAsync(config.clientId, config.clientSecret);
             }
             catch (Exception e)
             {
@@ -141,14 +218,16 @@ namespace TableManager
                 stringBuilder.Append($"{fileInfo.FullName} ");
             }
 
+            var exeName = TableManagerConfig.LaunchFolderPath + "/ExcelToJson.exe";
+            var process = System.Diagnostics.Process.Start(exeName, stringBuilder.ToString());
+            process.WaitForExit();
+
             var jsonPath = TableManagerConfig.JsonDataPath;
+
             if (Directory.Exists(jsonPath))
                 Directory.Delete(jsonPath, true);
-            Directory.CreateDirectory(jsonPath);
 
-            var exe_name = TableManagerConfig.FolderPath + "/ExcelToJson.exe";
-            var process = Process.Start(exe_name, stringBuilder.ToString());
-            process.WaitForExit();
+            Directory.Move(TableManagerConfig.LaunchFolderPath + "/Jsons", jsonPath);
 
             return process.ExitCode == 100;
         }

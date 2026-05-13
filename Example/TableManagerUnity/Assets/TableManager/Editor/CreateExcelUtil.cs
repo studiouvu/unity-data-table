@@ -18,11 +18,13 @@ namespace UnityEditor
                 }
             }
 
-            // var b = File.ReadAllText(ATableConfig.FolderPath + "/Editor/ExcelFileTemplate.xlsx");
-            // ProjectWindowUtil.CreateAssetWithContent($"a.xlsx", b);
-            // EditorGUIUtility.PingObject(a);
-
             var dest = $"{path}/NewExcelFile.xlsx";
+            var index = 2;
+            while (File.Exists(dest))
+            {
+                dest = $"{path}/NewExcelFile{index}.xlsx";
+                index++;
+            }
 
             File.Copy(TableManagerConfig.FolderPath + "/Editor/ExcelFileTemplate.xlsx", dest);
             AssetDatabase.Refresh();
