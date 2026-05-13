@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -22,6 +23,10 @@ namespace DTable
                 Console.OutputEncoding = Encoding.UTF8;
                 Console.WriteLine("START");
 
+                var cpuCores = Environment.ProcessorCount;
+                var workerCount = Math.Min(Math.Min(cpuCores, 4), args.Length);
+                Console.WriteLine($"CPU cores: {cpuCores} | Workers: {workerCount} | Files: {args.Length}");
+
                 // 고정 뷰: 파일 목록을 미리 출력하고 각 라인 번호를 기록
                 foreach (var path in args)
                 {
@@ -29,11 +34,15 @@ namespace DTable
                     Console.WriteLine($"⏳ - {Path.GetFileName(path)}");
                 }
 
+                // 워커 큐: 워커 스레드 하나가 자기 Excel.Application을 들고 큐에서 파일을 계속 꺼내 처리
+                // (파일 1개당 Excel 기동을 워커 1개당 1회로 줄여 startup 비용 절약)
+                var queue = new ConcurrentQueue<string>(args);
                 var threads = new List<Thread>();
 
-                foreach (var path in args)
+                for (var i = 0; i < workerCount; i++)
                 {
-                    var thread = new Thread(() => Process(path));
+                    var thread = new Thread(() => Worker(queue));
+                    thread.SetApartmentState(ApartmentState.STA); // Excel COM은 STA를 선호
                     thread.Start();
                     threads.Add(thread);
                 }
@@ -100,7 +109,47 @@ namespace DTable
             }
         }
 
-        public static void Process(string fileExcel)
+        private static void Worker(ConcurrentQueue<string> queue)
+        {
+            Excel.Application excelApp = null;
+            try
+            {
+                while (queue.TryDequeue(out var path))
+                {
+                    if (excelApp == null)
+                        excelApp = CreateExcelApp();
+
+                    try
+                    {
+                        Process(excelApp, path);
+                    }
+                    catch (COMException)
+                    {
+                        // COM 에러가 나면 Excel이 불안정할 수 있으니 재기동
+                        try { excelApp?.Quit(); } catch { }
+                        ReleaseObject(excelApp);
+                        excelApp = null;
+                    }
+                }
+            }
+            finally
+            {
+                try { excelApp?.Quit(); } catch { }
+                ReleaseObject(excelApp);
+            }
+        }
+
+        private static Excel.Application CreateExcelApp()
+        {
+            var app = new Excel.Application();
+            app.Visible = false;
+            app.ScreenUpdating = false;
+            app.DisplayAlerts = false;
+            app.EnableEvents = false;
+            return app;
+        }
+
+        public static void Process(Excel.Application excelApp, string fileExcel)
         {
             if (File.Exists(fileExcel) == false)
             {
@@ -111,17 +160,10 @@ namespace DTable
                 return;
             }
 
-            Excel.Application excelApp = null;
             Excel.Workbook workBook = null;
 
             try
             {
-                excelApp = new Excel.Application();
-                excelApp.Visible = false;
-                excelApp.ScreenUpdating = false;
-                excelApp.DisplayAlerts = false;
-                excelApp.EnableEvents = false;
-
                 workBook = excelApp.Workbooks.Open(fileExcel, UpdateLinks: 0, ReadOnly: true);
 
                 // Calculation은 워크북이 열려있어야 설정 가능
@@ -200,7 +242,6 @@ namespace DTable
                 object missing = Type.Missing;
                 object noSave = false;
                 workBook.Close(noSave, missing, missing);
-                excelApp.Quit();
 
                 UpdateStatus(fileExcel, "✅ ");
             }
@@ -212,12 +253,14 @@ namespace DTable
                     errorMessages.Add($"[{Path.GetFileName(fileExcel)}] {e}");
 
                 try { workBook?.Close(false); } catch { }
-                try { excelApp?.Quit(); } catch { }
+
+                // COM 오류면 Worker가 Excel을 재기동하도록 위로 전파
+                if (e is COMException)
+                    throw;
             }
             finally
             {
                 ReleaseObject(workBook);
-                ReleaseObject(excelApp);
             }
         }
 
