@@ -29,7 +29,7 @@ namespace TableManager
         {
             if (isRunning)
                 return;
-            
+
             isRunning = true;
 
             Dictionary.Clear();
@@ -47,84 +47,84 @@ namespace TableManager
 
             foreach (var type in types)
             {
-                try
+
+                var typeName = type
+                    .ToString()
+                    .Replace($"{nameof(TableManager)}.", "")
+                    .Replace("Row", "");
+
+                var json = $"Jsons/{typeName}.json".Load<TextAsset>().text;
+
+                var jsonDictionary = JsonConvert.DeserializeObject<Dictionary<int, List<string>>>(json);
+
+                Dictionary.Add(type, new Dictionary<string, object>());
+                IndexDictionary.Add(type, new Dictionary<int, object>());
+
+                for (var y = 4; y <= jsonDictionary.Count; y++)
                 {
-                    var typeName = type
-                        .ToString()
-                        .Replace($"{nameof(TableManager)}.", "")
-                        .Replace("Row", "");
+                    if (jsonDictionary[y].Count == 0)
+                        continue;
+                    if (jsonDictionary[y][0] == "#" || string.IsNullOrEmpty(jsonDictionary[y][1]))
+                        continue;
 
-                    var json = $"Jsons/{typeName}.json".Load<TextAsset>().text;
+                    var instance = Activator.CreateInstance(type);
 
-                    var jsonDictionary = JsonConvert.DeserializeObject<Dictionary<int, List<string>>>(json);
+                    var tableFields = type
+                        .GetProperties()
+                        .ToDictionary(info => info.Name, info => info);
 
-                    Dictionary.Add(type, new Dictionary<string, object>());
-                    IndexDictionary.Add(type, new Dictionary<int, object>());
+                    var arrayFieldName = string.Empty;
+                    var arrayValueList = new LinkedList<string>();
 
-                    for (var y = 4; y <= jsonDictionary.Count; y++)
+                    for (var x = 1; x < jsonDictionary[1].Count; x++)
                     {
-                        if (jsonDictionary[y].Count == 0)
+                        var fieldType = jsonDictionary[1][x];
+                        var nextFieldType = (x + 1 < jsonDictionary[1].Count) ? jsonDictionary[1][x + 1] : null;
+
+                        if (fieldType == "#")
                             continue;
-                        if (jsonDictionary[y][0] == "#" || string.IsNullOrEmpty(jsonDictionary[y][1]))
-                            continue;
 
-                        var instance = Activator.CreateInstance(type);
+                        var fieldName = jsonDictionary[3][x];
+                        var value = jsonDictionary[y][x];
 
-                        var tableFields = type
-                            .GetProperties()
-                            .ToDictionary(info => info.Name, info => info);
-
-                        var arrayFieldName = string.Empty;
-                        var arrayValueList = new LinkedList<string>();
-
-                        for (var x = 0; x < jsonDictionary[1].Count; x++)
+                        if (fieldType.Contains("[]"))
                         {
-                            var fieldType = jsonDictionary[1][x];
-                            var nextFieldType = (x + 1 < jsonDictionary[1].Count) ? jsonDictionary[1][x + 1] : null;
-
-                            if (fieldType == "#")
-                                continue;
-
-                            var fieldName = jsonDictionary[3][x];
-                            var value = jsonDictionary[y][x];
-
-                            if (fieldType.Contains("[]"))
+                            if (fieldName.IsNotEmpty())
                             {
-                                if (fieldName.IsNotEmpty())
-                                {
-                                    arrayFieldName = fieldName.Replace("[]", "");
-                                    arrayValueList.Clear();
-                                    if (value.IsNotEmpty())
-                                        arrayValueList.AddLast(value);
-                                }
-                                else
-                                {
-                                    if (value.IsNotEmpty())
-                                        arrayValueList.AddLast(value);
-
-                                    if (nextFieldType != "[]")
-                                        ApplyValueArray(tableFields[arrayFieldName], instance, arrayValueList.ToArray());
-                                }
+                                arrayFieldName = fieldName.Replace("[]", "");
+                                arrayValueList.Clear();
+                                if (value.IsNotEmpty())
+                                    arrayValueList.AddLast(value);
                             }
                             else
                             {
-                                ApplyValue(tableFields[fieldName], instance, value);
+                                if (value.IsNotEmpty())
+                                    arrayValueList.AddLast(value);
+
+                                if (nextFieldType != "[]")
+                                    ApplyValueArray(tableFields[arrayFieldName], instance, arrayValueList.ToArray());
                             }
                         }
+                        else
+                        {
+                            if (fieldName.IsNullOrEmpty())
+                            {
+                                Debug.LogError($"fieldName is null. type: {type}, row: {y}, column: {x}");
+                                continue;
+                            }
 
-                        var id = (instance as IRow)?.id;
-
-                        Dictionary[type].TryAdd(id, instance);
-
-                        if (instance is IIndex indexRow)
-                            IndexDictionary[type].TryAdd(indexRow.index, instance);
+                            ApplyValue(tableFields[fieldName], instance, value);
+                        }
                     }
+
+                    var id = (instance as IRow)?.id;
+
+                    Dictionary[type].TryAdd(id, instance);
+
+                    if (instance is IIndex indexRow)
+                        IndexDictionary[type].TryAdd(indexRow.index, instance);
                 }
-                catch (Exception e)
-                {
-                    Debug.LogError($"{type} {e.ToString()}");
-                    throw;
-                }
+
                 await UniTask.Yield();
             }
             HasInit = true;
