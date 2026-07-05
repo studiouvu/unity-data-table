@@ -227,7 +227,7 @@ namespace DTable
                     skipColumn[column] = true;
             }
 
-            var dictionary = new Dictionary<int, List<string>>();
+            var rows = new List<List<string>>();
 
             for (var row = 1; row <= rowCount; row++)
             {
@@ -244,7 +244,7 @@ namespace DTable
                 }
 
                 var list = new List<string>(maxColumn);
-                dictionary.Add(row, list);
+                rows.Add(list);
 
                 for (var column = 1; column <= maxColumn; column++)
                 {
@@ -265,7 +265,7 @@ namespace DTable
                 }
             }
 
-            return JsonConvert.SerializeObject(dictionary, Formatting.Indented);
+            return JsonConvert.SerializeObject(rows, Formatting.Indented);
         }
 
         private static string CellToString(object cellValue)

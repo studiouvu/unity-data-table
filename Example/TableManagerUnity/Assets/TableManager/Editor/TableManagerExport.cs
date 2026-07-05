@@ -93,19 +93,19 @@ namespace TableManager
                     var fileName = fileInfo.Name.Replace(".json", "");
 
                     var text = File.ReadAllText(fileInfo.FullName);
-                    var jsonDictionary = JsonConvert.DeserializeObject<Dictionary<int, List<string>>>(text);
+                    var rows = JsonConvert.DeserializeObject<List<List<string>>>(text);
 
                     var stringBuilder = new StringBuilder();
 
-                    for (var i = 0; i < jsonDictionary[1].Count; i++)
+                    for (var i = 0; i < rows[0].Count; i++)
                     {
-                        var valueType = jsonDictionary[1][i];
+                        var valueType = rows[0][i];
 
                         if (string.IsNullOrEmpty(valueType) || valueType == "#" || valueType == "[]")
                             continue;
 
-                        var valueDesc = jsonDictionary[2][i];
-                        var valueName = jsonDictionary[3][i];
+                        var valueDesc = rows[1][i];
+                        var valueName = rows[2][i];
 
                         stringBuilder.Append($"        /* {valueDesc} */\n        public {valueType} {valueName} {{ get; set; }} \n\n");
                     }

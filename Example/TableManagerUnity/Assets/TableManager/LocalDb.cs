@@ -55,16 +55,17 @@ namespace TableManager
 
                 var json = $"Jsons/{typeName}.json".Load<TextAsset>().text;
 
-                var jsonDictionary = JsonConvert.DeserializeObject<Dictionary<int, List<string>>>(json);
+                var rows = JsonConvert.DeserializeObject<List<List<string>>>(json);
 
                 Dictionary.Add(type, new Dictionary<string, object>());
                 IndexDictionary.Add(type, new Dictionary<int, object>());
 
-                for (var y = 4; y <= jsonDictionary.Count; y++)
+                // 0~2행은 헤더(타입/설명/이름), 3행부터 데이터
+                for (var y = 3; y < rows.Count; y++)
                 {
-                    if (jsonDictionary[y].Count == 0)
+                    if (rows[y].Count == 0)
                         continue;
-                    if (jsonDictionary[y][0] == "#" || string.IsNullOrEmpty(jsonDictionary[y][1]))
+                    if (rows[y][0] == "#" || string.IsNullOrEmpty(rows[y][1]))
                         continue;
 
                     var instance = Activator.CreateInstance(type);
@@ -76,16 +77,16 @@ namespace TableManager
                     var arrayFieldName = string.Empty;
                     var arrayValueList = new LinkedList<string>();
 
-                    for (var x = 1; x < jsonDictionary[1].Count; x++)
+                    for (var x = 1; x < rows[0].Count; x++)
                     {
-                        var fieldType = jsonDictionary[1][x];
-                        var nextFieldType = (x + 1 < jsonDictionary[1].Count) ? jsonDictionary[1][x + 1] : null;
+                        var fieldType = rows[0][x];
+                        var nextFieldType = (x + 1 < rows[0].Count) ? rows[0][x + 1] : null;
 
                         if (fieldType == "#")
                             continue;
 
-                        var fieldName = jsonDictionary[3][x];
-                        var value = jsonDictionary[y][x];
+                        var fieldName = rows[2][x];
+                        var value = rows[y][x];
 
                         if (fieldType.Contains("[]"))
                         {
@@ -109,7 +110,7 @@ namespace TableManager
                         {
                             if (fieldName.IsNullOrEmpty())
                             {
-                                Debug.LogError($"fieldName is null. type: {type}, row: {y}, column: {x}");
+                                Debug.LogError($"fieldName is null. type: {type}, row: {y + 1}, column: {x}");
                                 continue;
                             }
 
