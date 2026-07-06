@@ -92,16 +92,16 @@ namespace TableManager
 
                         if (fieldType.Contains("[]"))
                         {
-                            if (fieldName.IsNotEmpty())
+                            if (!string.IsNullOrEmpty(fieldName))
                             {
                                 arrayFieldName = fieldName.Replace("[]", "");
                                 arrayValueList.Clear();
-                                if (value.IsNotEmpty())
+                                if (!string.IsNullOrEmpty(value))
                                     arrayValueList.AddLast(value);
                             }
                             else
                             {
-                                if (value.IsNotEmpty())
+                                if (!string.IsNullOrEmpty(value))
                                     arrayValueList.AddLast(value);
 
                                 if (nextFieldType != "[]")
@@ -110,7 +110,7 @@ namespace TableManager
                         }
                         else
                         {
-                            if (fieldName.IsNullOrEmpty())
+                            if (string.IsNullOrEmpty(fieldName))
                             {
                                 Debug.LogError($"fieldName is null. type: {type}, row: {y + 1}, column: {x}");
                                 continue;
