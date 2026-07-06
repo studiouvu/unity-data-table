@@ -44,7 +44,8 @@ namespace TableManager
             {
                 Debug.Log($"[{nameof(TableManager)} Export asset find] {fileInfo.FullName}");
 
-                stringBuilder.Append($"{fileInfo.FullName} ");
+                // 경로에 공백이 있어도 인자가 쪼개지지 않도록 따옴표로 감싼다
+                stringBuilder.Append($"\"{fileInfo.FullName}\" ");
             }
 
             var exeName = launchFolderPath + "/ExcelToJson.exe";

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text;
 using Newtonsoft.Json;
 
@@ -277,7 +278,8 @@ namespace DTable
                 case string text:
                     return text;
                 case double number:
-                    return number.ToString();
+                    // OS locale에 따라 소수점 표기가 달라져 JSON diff가 생기지 않도록 고정
+                    return number.ToString(CultureInfo.InvariantCulture);
                 case bool flag:
                     return flag.ToString();
                 case CellError error:
