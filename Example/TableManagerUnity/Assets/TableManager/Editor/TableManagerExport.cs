@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -16,10 +18,15 @@ namespace TableManager
         {
             Debug.Log($"[{nameof(TableManager)}] Export Start");
 
+            var jsonDataPath = TableManagerConfig.JsonDataPath;
+            var hashesBefore = await Task.Run(() => ComputeJsonHashes(jsonDataPath));
+
             var excelToJsonResult = await ExportExcelToJson();
 
             if (!excelToJsonResult)
                 return;
+
+            var hashesAfter = await Task.Run(() => ComputeJsonHashes(jsonDataPath));
 
             Debug.Log($"[{nameof(TableManager)}] Create Class Start");
             await CreateClassFiles();
@@ -27,6 +34,34 @@ namespace TableManager
             Debug.Log($"[{nameof(TableManager)}] Export End");
 
             AssetDatabase.Refresh();
+
+            TableExportPostprocessorRunner.Run(new TableExportContext(jsonDataPath, GetChangedTables(hashesBefore, hashesAfter)));
+        }
+
+        private static Dictionary<string, string> ComputeJsonHashes(string jsonDataPath)
+        {
+            var hashes = new Dictionary<string, string>();
+
+            if (!Directory.Exists(jsonDataPath))
+                return hashes;
+
+            using var md5 = MD5.Create();
+
+            foreach (var filePath in Directory.GetFiles(jsonDataPath, "*.json"))
+                hashes[Path.GetFileNameWithoutExtension(filePath)] = Convert.ToBase64String(md5.ComputeHash(File.ReadAllBytes(filePath)));
+
+            return hashes;
+        }
+
+        private static IEnumerable<string> GetChangedTables(Dictionary<string, string> hashesBefore, Dictionary<string, string> hashesAfter)
+        {
+            var changedOrAdded = hashesAfter
+                .Where(pair => !hashesBefore.TryGetValue(pair.Key, out var hashBefore) || hashBefore != pair.Value)
+                .Select(pair => pair.Key);
+
+            var removed = hashesBefore.Keys.Where(tableName => !hashesAfter.ContainsKey(tableName));
+
+            return changedOrAdded.Concat(removed);
         }
 
         private static async Task<bool> ExportExcelToJson()
